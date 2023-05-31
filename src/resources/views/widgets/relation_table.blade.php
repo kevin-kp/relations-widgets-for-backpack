@@ -1,3 +1,11 @@
+@push('after_styles') @if (request()->ajax()) @endpush @endif
+<style>
+    .cursor-move {
+        cursor: move;
+    }
+</style>
+@if (!request()->ajax()) @endpush @endif
+
 @php
     if(!isset($entry)){
         return;
@@ -14,6 +22,9 @@
 
     if (!isset($widget['buttons']) || $widget['buttons'] !== false) {
         $widget['buttons'] = true;
+    }
+    if (!isset($widget['reorder']) || $widget['reorder'] !== false) {
+        $widget['reorder'] = true;
     }
     if (!isset($widget['button_create']) || $widget['button_create'] !== false) {
         $widget['button_create'] = true;
@@ -68,6 +79,9 @@
         $items = $query->get();
     }
 @endphp
+<br/>
+<hr/>
+<br/>
 <div id="{{$widgetId}}" class="dataTables_wrapper">
     <div class="row mb-0">
         <div class="col-sm-6">
@@ -81,6 +95,12 @@
                     >
                         <span class="ladda-label"><i class="la la-plus"></i> {{ trans('backpack::crud.add') }}</span>
                     </a>
+                @endif
+
+                @if ($widget['reorder'] === true)
+                    <button class="btn btn-primary ml-2" data-style="zoom-in" onclick="saveOrder()">
+                        <span class="ladda-label"><i class="la la-save"></i> Volgorde opslaan</span>
+                    </button>
                 @endif
             </div>
         </div>
@@ -107,10 +127,13 @@
     <table
             class="bg-white table table-striped table-hover nowrap rounded shadow-xs border-xs dataTable dtr-inline"
             cellspacing="0"
-            aria-describedby="crudTable_info" role="grid"
+            aria-describedby="crudTable_info" role="grid" id="relation-table"
     >
         <thead>
         <tr role="row">
+            @if ($widget['reorder'] === true)
+                <th></th>
+            @endif
             @foreach($widget['columns'] as $column)
                 <th>{{$column['label']}}</th>
             @endforeach
@@ -120,8 +143,16 @@
         </tr>
         </thead>
         <tbody>
+
         @foreach($items as $item)
-            <tr role="row">
+            <tr role="row" data-order-value="{{ $item->order }}" data-id-value="{{ $item->id }}">
+                @if ($widget['reorder'] === true)
+                    <td>
+                        <span class="btn btn-sm cursor-move">
+                            <i class="la la-reorder"></i>
+                        </span>
+                    </td>
+                @endif
                 @foreach($widget['columns'] as $column)
                     @php
                         $value = '';
@@ -272,6 +303,71 @@
 
         }
     }
+
+    const saveOrder = () => {
+        const orders = {};
+        $('#relation-table tbody tr').each((index, element) => {
+            const jqElement = $(element);
+            const orderValue = jqElement.attr('data-order-value');
+            const idValue = jqElement.attr('data-id-value');
+            orders[idValue] = orderValue;
+        });
+
+        const data = {
+            'relation_name': '{{$widget['name']}}',
+            'orders': orders
+        }
+
+        $.ajax({
+            url: '{{ url($crud->route.'/'.$entry->getKey().'/order') }}',
+            type: 'PUT',
+            data: data,
+            success: function (result) {
+                new Noty({
+                    type: 'success',
+                    text: "{!! '<strong>Volgorde opgeslagen</strong><br>De volgorde is met succes opgeslagen' !!}"
+                }).show();
+            },
+            error: function (result) {
+                swal({
+                    title: "Volgorde opslaan mislukt",
+                    text: "Er ging iets mis bij het opslaan van de volgorde",
+                    icon: 'error',
+                    timer: 4000,
+                    buttons: false
+                });
+            }
+        });
+    }
+
+    const fixHelperModified = function(e, tr) {
+        const $originals = tr.children();
+        const $helper = tr.clone();
+        $helper.children().each(function(index) {
+            $(this).width($originals.eq(index).width())
+        });
+        return $helper;
+    }
+
+    const updateIndex = function(e, ui) {
+        $('tr', ui.item.parent()).each(function (i) {
+            $(this).attr('data-order-value', i);
+        });
+    };
+
+    $("#relation-table tbody").sortable({
+        helper: fixHelperModified,
+        stop: updateIndex
+    }).disableSelection();
+
+    $("tbody").sortable({
+        distance: 5,
+        delay: 100,
+        opacity: 0.6,
+        cursor: 'move',
+        update: function() {}
+    });
+
 
     // make it so that the function above is run after each DataTable draw event
     // crud.addFunctionToDataTablesDrawEventQueue('deleteEntry');
